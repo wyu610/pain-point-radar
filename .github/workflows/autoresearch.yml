@@ -1,0 +1,121 @@
+name: Karpathy Autoresearch — weekly validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      week_ending:
+        description: 'Week ending date (YYYY-MM-DD)'
+        required: true
+      picks:
+        description: 'JSON array: [{rank, query}]'
+        required: true
+      callback_url:
+        description: 'Where to POST each result'
+        required: true
+      callback_secret:
+        description: 'HMAC secret for signing callbacks'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        rank: [1, 2, 3, 4, 5]
+    env:
+      WEEK_ENDING: ${{ inputs.week_ending }}
+      PICKS_JSON: ${{ inputs.picks }}
+      CALLBACK_URL: ${{ inputs.callback_url }}
+      CALLBACK_SECRET: ${{ inputs.callback_secret }}
+      RANK: ${{ matrix.rank }}
+    steps:
+      - name: Pick the matching query
+        id: pick
+        run: |
+          python3 - <<'PY'
+          import json, os
+          picks = json.loads(os.environ['PICKS_JSON'])
+          rank = int(os.environ['RANK'])
+          target = next((p for p in picks if int(p['rank']) == rank), None)
+          out = os.environ['GITHUB_OUTPUT']
+          if target is None:
+              with open(out, 'a') as f:
+                  f.write('skip=true\n')
+          else:
+              with open(out, 'a') as f:
+                  f.write('skip=false\n')
+              # Save the query to a file we'll read later (safer than $GITHUB_OUTPUT for arbitrary text)
+              with open('query.txt', 'w') as f:
+                  f.write(target['query'])
+          PY
+
+      - uses: actions/checkout@v4
+        if: steps.pick.outputs.skip == 'false'
+        with:
+          repository: karpathy/autoresearch
+          path: autoresearch
+
+      - uses: actions/setup-python@v5
+        if: steps.pick.outputs.skip == 'false'
+        with:
+          python-version: '3.13'
+
+      - name: Install autoresearch
+        if: steps.pick.outputs.skip == 'false'
+        working-directory: autoresearch
+        run: |
+          if [ -f pyproject.toml ]; then pip install -e . ; fi
+          if [ -f requirements.txt ]; then pip install -r requirements.txt ; fi
+
+      - name: Run autoresearch
+        if: steps.pick.outputs.skip == 'false'
+        id: run
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          QUERY="$(cat query.txt)"
+          set +e
+          OUTPUT=$(cd autoresearch && python -m autoresearch "$QUERY" 2>&1)
+          STATUS=$?
+          if [ $STATUS -ne 0 ]; then
+            OUTPUT=$(cd autoresearch && python cli.py "$QUERY" 2>&1)
+            STATUS=$?
+          fi
+          if [ $STATUS -ne 0 ]; then
+            OUTPUT=$(cd autoresearch && python main.py "$QUERY" 2>&1)
+            STATUS=$?
+          fi
+          # Save to files; never echo arbitrary content into $GITHUB_OUTPUT
+          printf '%s' "$OUTPUT" > result.txt
+          echo "$STATUS" > status.txt
+
+      - name: POST result back to radar
+        if: steps.pick.outputs.skip == 'false'
+        run: |
+          python3 - <<'PY'
+          import hashlib, hmac, json, os, urllib.request
+          status_code = open('status.txt').read().strip() if os.path.exists('status.txt') else '1'
+          output = open('result.txt').read() if os.path.exists('result.txt') else ''
+          ok = status_code == '0'
+          payload = {
+              "weekEnding": os.environ["WEEK_ENDING"],
+              "rank": int(os.environ["RANK"]),
+              "status": "complete" if ok else "failed",
+              "validationMd": output[:200000] if ok else None,
+              "error": None if ok else output[:2000],
+          }
+          body = json.dumps(payload).encode()
+          sig = hmac.new(os.environ["CALLBACK_SECRET"].encode(), body, hashlib.sha256).hexdigest()
+          req = urllib.request.Request(
+              os.environ["CALLBACK_URL"], data=body,
+              headers={"content-type": "application/json", "x-radar-signature": sig},
+              method="POST",
+          )
+          with urllib.request.urlopen(req, timeout=30) as r:
+              print(r.status, r.read().decode())
+          PY

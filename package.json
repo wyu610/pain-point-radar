@@ -1,0 +1,36 @@
+{
+  "name": "pain-point-radar",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "db:generate": "dotenv -e .env.local -- drizzle-kit generate",
+    "db:push": "dotenv -e .env.local -- drizzle-kit push",
+    "db:seed": "dotenv -e .env.local -- tsx src/db/seed.ts",
+    "radar:once": "dotenv -e .env.local -- tsx src/cli.ts daily",
+    "radar:weekly": "dotenv -e .env.local -- tsx src/cli.ts weekly"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.40.0",
+    "@google/genai": "^0.7.0",
+    "@neondatabase/serverless": "^0.10.4",
+    "@octokit/rest": "^21.0.2",
+    "drizzle-orm": "^0.36.4",
+    "jszip": "^3.10.1",
+    "next": "15.1.6",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "19.0.0",
+    "dotenv-cli": "^7.4.4",
+    "drizzle-kit": "^0.28.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.0"
+  }
+}
