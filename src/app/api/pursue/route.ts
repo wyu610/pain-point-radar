@@ -1,10 +1,15 @@
 import { NextResponse } from 'next/server';
 import { buildPursueZip } from '@/karpathy/scaffold';
+import { isAdminRequest } from '@/lib/admin-auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: Request) {
+  if (!isAdminRequest(req)) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  }
+
   const url = new URL(req.url);
   const weekEnding = url.searchParams.get('weekEnding');
   const rank = Number(url.searchParams.get('rank'));

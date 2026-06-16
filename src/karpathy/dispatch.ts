@@ -7,7 +7,11 @@ export interface DispatchPick {
 
 /**
  * Triggers a workflow_dispatch on the GitHub Actions repo containing the
- * autoresearch workflow. Inputs: weekEnding, picks JSON, callback URL, secret.
+ * autoresearch workflow. Inputs: weekEnding, picks JSON, callback URL.
+ *
+ * The HMAC secret is NOT passed as an input — on a public repo, workflow_dispatch
+ * input values are recorded in the run metadata and publicly visible. The workflow
+ * reads it from `secrets.WEBHOOK_SECRET` instead (set via `gh secret set`).
  *
  * The workflow installs Python, clones karpathy/autoresearch, runs each query,
  * and POSTs results back to /api/validation with HMAC-signed bodies.
@@ -18,12 +22,9 @@ export async function dispatchAutoresearch(weekEnding: string, picks: DispatchPi
   const repo = process.env.GH_WORKFLOW_REPO;
   const workflow = process.env.GH_WORKFLOW_FILE ?? 'autoresearch.yml';
   const callback = process.env.APP_URL;
-  const secret = process.env.WEBHOOK_SECRET;
 
-  if (!token || !owner || !repo || !callback || !secret) {
-    throw new Error(
-      'GH_DISPATCH_TOKEN, GH_WORKFLOW_OWNER, GH_WORKFLOW_REPO, APP_URL, WEBHOOK_SECRET must be set'
-    );
+  if (!token || !owner || !repo || !callback) {
+    throw new Error('GH_DISPATCH_TOKEN, GH_WORKFLOW_OWNER, GH_WORKFLOW_REPO, APP_URL must be set');
   }
 
   const octokit = new Octokit({ auth: token });
@@ -36,7 +37,6 @@ export async function dispatchAutoresearch(weekEnding: string, picks: DispatchPi
       week_ending: weekEnding,
       picks: JSON.stringify(picks),
       callback_url: `${callback.replace(/\/$/, '')}/api/validation`,
-      callback_secret: secret,
     },
   });
 }

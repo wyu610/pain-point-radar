@@ -12,9 +12,6 @@ on:
       callback_url:
         description: 'Where to POST each result'
         required: true
-      callback_secret:
-        description: 'HMAC secret for signing callbacks'
-        required: true
 
 permissions:
   contents: read
@@ -31,7 +28,7 @@ jobs:
       WEEK_ENDING: ${{ inputs.week_ending }}
       PICKS_JSON: ${{ inputs.picks }}
       CALLBACK_URL: ${{ inputs.callback_url }}
-      CALLBACK_SECRET: ${{ inputs.callback_secret }}
+      CALLBACK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
       RANK: ${{ matrix.rank }}
     steps:
       - name: Pick the matching query
@@ -98,7 +95,7 @@ jobs:
         if: steps.pick.outputs.skip == 'false'
         run: |
           python3 - <<'PY'
-          import hashlib, hmac, json, os, urllib.request
+          import hashlib, hmac, json, os, urllib.error, urllib.request
           status_code = open('status.txt').read().strip() if os.path.exists('status.txt') else '1'
           output = open('result.txt').read() if os.path.exists('result.txt') else ''
           ok = status_code == '0'
@@ -116,6 +113,10 @@ jobs:
               headers={"content-type": "application/json", "x-radar-signature": sig},
               method="POST",
           )
-          with urllib.request.urlopen(req, timeout=30) as r:
-              print(r.status, r.read().decode())
+          try:
+              with urllib.request.urlopen(req, timeout=30) as r:
+                  print(r.status, r.read().decode())
+          except urllib.error.HTTPError as e:
+              print("callback failed", e.code, e.read().decode())
+              raise
           PY
