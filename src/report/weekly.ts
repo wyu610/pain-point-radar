@@ -80,6 +80,14 @@ export async function runWeekly(): Promise<{ weekEnding: string; dispatched: num
       .where(eq(schema.weeklyReports.weekEnding, weekEnding));
   } catch (e) {
     console.warn('[weekly] dispatch failed:', e);
+    await db
+      .update(schema.weeklyReports)
+      .set({
+        status: 'failed',
+        validationMd: `_(dispatch failed: ${(e as Error).message})_`,
+        validationAt: new Date(),
+      })
+      .where(eq(schema.weeklyReports.weekEnding, weekEnding));
   }
 
   return { weekEnding, dispatched };

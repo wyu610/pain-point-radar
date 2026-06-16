@@ -26,6 +26,7 @@ export const topics = pgTable(
     theme: text('theme'),
     painPoint: text('pain_point'),
     sentiment: text('sentiment'), // complaint | question | discussion | showcase
+    provider: text('provider'), // which extractor produced theme/pain_point (e.g. 'gemini', 'heuristic')
   },
   (t) => ({
     uniq: uniqueIndex('topics_source_external_idx').on(t.source, t.externalId),

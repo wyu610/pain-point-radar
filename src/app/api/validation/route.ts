@@ -37,7 +37,7 @@ export async function POST(req: Request) {
   }
 
   const db = getDb();
-  await db
+  const updated = await db
     .update(schema.weeklyReports)
     .set({
       status: payload.status,
@@ -52,7 +52,12 @@ export async function POST(req: Request) {
         eq(schema.weeklyReports.weekEnding, payload.weekEnding),
         eq(schema.weeklyReports.rank, payload.rank)
       )
-    );
+    )
+    .returning({ rank: schema.weeklyReports.rank });
+
+  if (updated.length === 0) {
+    return NextResponse.json({ error: 'weekly pick not found' }, { status: 404 });
+  }
 
   return NextResponse.json({ ok: true });
 }

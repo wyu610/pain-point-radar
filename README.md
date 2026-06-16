@@ -11,7 +11,7 @@ A scheduled webapp that mines GitHub + Reddit for hot complaints and pain points
 | Database | Neon free tier (0.5 GB) | Neon free tier |
 | LLM | Gemini 2.5 Flash free tier → OpenRouter free → heuristic fallback | Anthropic Haiku 4.5 (best quality) |
 | Validation | GitHub Actions (free for public repos) | same |
-| Auth | Public URL (deferred) | Vercel Authentication |
+| Auth | `ADMIN_SECRET` protects settings + starter downloads | same, optionally add Vercel Authentication |
 
 The same code runs both flavors. The LLM provider chain auto-detects which env vars are set and falls through on errors.
 
@@ -56,8 +56,9 @@ https://openrouter.ai/keys → free key, no credit card. Used only if Gemini err
 vercel env add OPENROUTER_API_KEY production
 ```
 
-### 4. Generate cron + webhook secrets
+### 4. Generate admin, cron + webhook secrets
 ```bash
+vercel env add ADMIN_SECRET production      # paste: openssl rand -hex 32
 vercel env add CRON_SECRET production       # paste: openssl rand -hex 32
 vercel env add WEBHOOK_SECRET production    # paste: openssl rand -hex 32
 ```
@@ -81,6 +82,11 @@ vercel env add APP_URL           production    # https://your-app.vercel.app
 
 # And the autoresearch worker needs a Gemini key too (autoresearch uses LLMs):
 gh secret set GEMINI_API_KEY --body "$(grep GEMINI_API_KEY .env.local | cut -d= -f2)"
+
+# The validation callback is HMAC-signed. Store the SAME value you set for
+# WEBHOOK_SECRET in Vercel as a GitHub Actions secret — never pass it as a
+# workflow input (public-repo dispatch inputs are world-readable).
+gh secret set WEBHOOK_SECRET --body "$(grep WEBHOOK_SECRET .env.local | cut -d= -f2)"
 ```
 
 > Note: the autoresearch upstream defaults to Anthropic. To run it on the free path, fork `karpathy/autoresearch` and patch its provider to Gemini, or use [LiteLLM proxy](https://github.com/BerriAI/litellm) to route Anthropic-shaped calls to Gemini. The repo URL in the workflow can be swapped to your fork.
@@ -90,7 +96,9 @@ gh secret set GEMINI_API_KEY --body "$(grep GEMINI_API_KEY .env.local | cut -d= 
 vercel deploy --prod
 ```
 
-That's it. The first daily cron fires at the next 18:00 MST tick.
+That's it. Cron schedules live in `vercel.json`: daily runs at `0 1 * * *`
+UTC and weekly runs at `30 1 * * 6` UTC. That is 18:00/18:30 during MST and
+17:00/17:30 during MDT.
 
 ## How the free LLM path works
 
@@ -107,6 +115,8 @@ vercel env pull .env.local --yes
 npm install
 npm run dev                  # http://localhost:3000
 
+# Open /settings and sign in with ADMIN_SECRET before editing sources/scoring.
+
 # Manually trigger jobs locally:
 curl -H "Authorization: Bearer $(grep CRON_SECRET .env.local | cut -d= -f2)" \
      http://localhost:3000/api/cron/daily
@@ -118,7 +128,8 @@ npm run radar:weekly
 
 ## Pursue an idea
 
-Click **Download starter project (.zip)** on `/weekly`. The server bundles:
+Sign in on `/settings`, then click **Download starter project (.zip)** on
+`/weekly`. The server bundles:
 - `CLAUDE.md` (live-fetched from forrestchang/andrej-karpathy-skills)
 - `BACKGROUND.md` (source thread, pain point, autoresearch validation)
 - `README.md`, `.gitignore` placeholders
@@ -129,6 +140,8 @@ Unzip and start from there.
 
 Add `ANTHROPIC_API_KEY` to enable Anthropic Haiku 4.5 at the front of the provider chain. Better theme phrasing and more nuanced pain-point extraction. Cost: ~$2-5/mo for our volume with prompt caching.
 
-## Re-enable auth later
+## Optional stronger auth
 
-Vercel Authentication = Project Settings → Deployment Protection → enable. Restricts the URL to your Vercel team. Zero code change.
+The lightweight `ADMIN_SECRET` gate protects writes and starter downloads. If
+you also want to restrict the whole site, enable Vercel Authentication in
+Project Settings → Deployment Protection.

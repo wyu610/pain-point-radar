@@ -5,6 +5,7 @@ export function SettingsEditor({ file, initial }: { file: 'sources' | 'scoring';
   const [text, setText] = useState(initial);
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   async function onSave() {
     setBusy(true);
@@ -25,12 +26,25 @@ export function SettingsEditor({ file, initial }: { file: 'sources' | 'scoring';
     }
   }
 
+  async function onLogout() {
+    setLoggingOut(true);
+    try {
+      await fetch('/api/admin/logout', { method: 'POST' });
+      window.location.reload();
+    } finally {
+      setLoggingOut(false);
+    }
+  }
+
   return (
     <div>
       <textarea value={text} onChange={(e) => setText(e.target.value)} spellCheck={false} />
       <div style={{ marginTop: '0.5rem' }}>
         <button onClick={onSave} disabled={busy}>
           {busy ? 'Saving…' : 'Save'}
+        </button>
+        <button className="secondary" onClick={onLogout} disabled={loggingOut} style={{ marginLeft: '0.5rem' }}>
+          {loggingOut ? 'Signing out...' : 'Sign out'}
         </button>
         {status && <span className="subtle" style={{ marginLeft: '1rem' }}>{status}</span>}
       </div>
